@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DataViz - Large File Analysis</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Poppins', sans-serif;
+    }
+
+    body {
+      background: linear-gradient(135deg, #1e1e2f, #2a2a4e);
+      color: #fff;
+      min-height: 100vh;
+      padding: 20px;
+      transition: background 0.5s;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 20px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 15px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 2.5em;
+      margin-bottom: 20px;
+      color: #00d4ff;
+      text-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+    }
+
+    h4 {
+      text-align: center;
+      font-size: 1em;
+      margin-bottom: 20px;
+      color: #00d4ff;
+      text-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+    }
+
+    .upload-section,
+    .analysis-section {
+      margin: 20px 0;
+      padding: 20px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+      transition: transform 0.3s;
+    }
+
+    .upload-section:hover,
+    .analysis-section:hover {
+      transform: translateY(-5px);
+    }
+
+    input[type="file"] {
+      display: block;
+      margin: 10px auto;
+      padding: 10px;
+      background: #fff;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    button {
+      padding: 10px 20px;
+      background: #00d4ff;
+      border: none;
+      border-radius: 5px;
+      color: #1e1e2f;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.3s, transform 0.2s;
+    }
+
+    button:hover {
+      background: #00b4d8;
+      transform: scale(1.05);
+    }
+
+    .theme-toggle {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: none;
+      border: none;
+      font-size: 1.5em;
+      color: #fff;
+      cursor: pointer;
+    }
+
+    .charts {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+      gap: 30px;
+      margin-top: 30px;
+    }
+
+    .chart-container {
+      position: relative;
+      max-width: 100%;
+      height: 300px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+      padding: 15px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    }
+
+    canvas {
+      width: 100% !important;
+      height: 100% !important;
+    }
+
+    .stats-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+
+    .stats-table th,
+    .stats-table td {
+      padding: 10px;
+      text-align: left;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .stats-table th {
+      background: rgba(0, 212, 255, 0.2);
+    }
+
+    /* Light Theme */
+    body.light {
+      background: linear-gradient(135deg, #f5f7fa, #c3cfe2);
+      color: #1e1e2f;
+    }
+
+    body.light .container {
+      background: rgba(255, 255, 255, 0.8);
+      border: 1px solid rgba(0, 0, 0, 0.1);
+    }
+
+    body.light h1 {
+      color: #1e1e2f;
+      text-shadow: none;
+    }
+
+    body.light button {
+      background: #1e1e2f;
+      color: #fff;
+    }
+
+    body.light .stats-table th {
+      background: rgba(30, 30, 47, 0.2);
+    }
+
+    body.light .chart-container {
+      background: rgba(255, 255, 255, 0.7);
+    }
+
+    @media (max-width: 768px) {
+      .charts {
+        grid-template-columns: 1fr;
+      }
+
+      .chart-container {
+        height: 250px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <button class="theme-toggle" onclick="toggleTheme()">☀️</button>
+  <div class="container">
+    <h1>DataViz - Large File Analysis</h1><br>
+    <h4>made by:<a href="https://github.com/atharv4git">Atharv Kulkarni</a></h4>
+    <div class="upload-section">
+      <input type="file" id="fileInput" accept=".csv" onchange="handleFile(event)">
+      <button onclick="analyzeData()">Analyze</button>
+    </div>
+    <div class="analysis-section" id="analysis">
+      <p>Upload a CSV file (up to 1GB) to see the analysis and visualizations.</p>
+    </div>
+    <div class="charts" id="charts"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script>
+    let numericData = {};
+    let headers = null;
+    let rowCount = 0;
+
+    function handleFile(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      if (file.name.endsWith('.csv') && file.size <= 1e9) { // Limit to ~1GB
+        numericData = {};
+        headers = null;
+        rowCount = 0;
+
+        Papa.parse(file, {
+          header: true,
+          worker: true, // Use web worker for large files
+          chunkSize: 1024 * 1024, // 1MB chunks
+          step: function (results) {
+            if (!headers) {
+              headers = Object.keys(results.data);
+              headers.forEach(col => {
+                numericData[col] = {values: [], sum: 0, count: 0, min: Infinity, max: -Infinity};
+              });
+            }
+            processChunk(results.data);
+            rowCount++;
+          },
+          complete: function () {
+            document.getElementById('analysis').innerHTML = '<p>File processed successfully! Click "Analyze" to visualize.</p>';
+            console.log('Processing complete. Rows:', rowCount);
+          },
+          error: function (err) {
+            console.error('Parsing Error:', err);
+            alert('Error processing CSV file.');
+          }
+        });
+      } else {
+        alert('Please upload a CSV file under 1GB.');
+      }
+    }
+
+    function processChunk(row) {
+      headers.forEach(col => {
+        const value = parseFloat(row[col]);
+        if (!isNaN(value)) {
+          const colData = numericData[col];
+          colData.values.push(value);
+          colData.sum += value;
+          colData.count++;
+          colData.min = Math.min(colData.min, value);
+          colData.max = Math.max(colData.max, value);
+        }
+      });
+    }
+
+    function calculateStats(colData) {
+      if (colData.count === 0) return null;
+      const mean = colData.sum / colData.count;
+      const sorted = colData.values.sort((a, b) => a - b);
+      const median = sorted.length % 2 === 0
+        ? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
+        : sorted[Math.floor(sorted.length / 2)];
+      const variance = colData.values.reduce((a, v) => a + Math.pow(v - mean, 2), 0) / colData.count;
+      const stdDev = Math.sqrt(variance);
+
+      return {mean, median, min: colData.min, max: colData.max, stdDev, count: colData.count};
+    }
+
+    function analyzeData() {
+      if (!headers) {
+        alert('Please upload a file first!');
+        return;
+      }
+
+      const analysisDiv = document.getElementById('analysis');
+      const chartsDiv = document.getElementById('charts');
+      chartsDiv.innerHTML = '';
+
+      // Basic Info
+      let html = `<p><strong>Rows:</strong> ${rowCount}</p><p><strong>Columns:</strong> ${headers.join(', ')}</p>`;
+
+      // Numeric Columns Detection
+      const numericCols = headers.filter(col => numericData[col].count > 0);
+
+      // Statistical Analysis Table
+      html += '<table class="stats-table"><tr><th>Column</th><th>Count</th><th>Mean</th><th>Median</th><th>Min</th><th>Max</th><th>Std Dev</th></tr>';
+      numericCols.forEach(col => {
+        const stats = calculateStats(numericData[col]);
+        if (stats) {
+          html += `<tr><td>${col}</td><td>${stats.count}</td><td>${stats.mean.toFixed(2)}</td><td>${stats.median.toFixed(2)}</td><td>${stats.min}</td><td>${stats.max}</td><td>${stats.stdDev.toFixed(2)}</td></tr>`;
+        }
+      });
+      html += '</table>';
+      analysisDiv.innerHTML = html;
+
+      // Charts
+      numericCols.forEach((col, index) => {
+        const colData = numericData[col];
+        const values = colData.values;
+        const labels = Array.from({length: Math.min(values.length, 50)}, (_, i) => `Row ${i + 1}`);
+
+        // Line Chart
+        const lineContainer = document.createElement('div');
+        lineContainer.className = 'chart-container';
+        const lineCanvas = document.createElement('canvas');
+        lineContainer.appendChild(lineCanvas);
+        chartsDiv.appendChild(lineContainer);
+        new Chart(lineCanvas, {
+          type: 'line',
+          data: {
+            labels,
+            datasets: [{
+              label: col,
+              data: values.slice(0, 50),
+              borderColor: '#00d4ff',
+              backgroundColor: 'rgba(0, 212, 255, 0.2)',
+              tension: 0.4,
+              fill: true
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {title: {display: true, text: `${col} Trend (Sample)`, color: '#fff'}},
+            scales: {y: {beginAtZero: true, title: {display: true, text: col, color: '#fff'}}}
+          }
+        });
+
+        // Bar Chart (Sample of Top 10)
+        const barContainer = document.createElement('div');
+        barContainer.className = 'chart-container';
+        const barCanvas = document.createElement('canvas');
+        barContainer.appendChild(barCanvas);
+        chartsDiv.appendChild(barContainer);
+        new Chart(barCanvas, {
+          type: 'bar',
+          data: {
+            labels: labels.slice(0, 10),
+            datasets: [{
+              label: col,
+              data: values.slice(0, 10),
+              backgroundColor: 'rgba(0, 212, 255, 0.6)',
+              borderColor: '#00d4ff',
+              borderWidth: 1
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {title: {display: true, text: `Top 10 ${col}`, color: '#fff'}},
+            scales: {y: {beginAtZero: true, title: {display: true, text: col, color: '#fff'}}}
+          }
+        });
+
+        // Pie Chart (Distribution)
+        const ranges = [0, 25, 50, 75, 100].map((r, i, arr) => {
+          const min = i === 0 ? 0 : arr[i - 1] * colData.max / 100;
+          const max = r === 100 ? Infinity : r * colData.max / 100;
+          return values.filter(v => v >= min && v < max).length;
+        });
+        const pieContainer = document.createElement('div');
+        pieContainer.className = 'chart-container';
+        const pieCanvas = document.createElement('canvas');
+        pieContainer.appendChild(pieCanvas);
+        chartsDiv.appendChild(pieContainer);
+        new Chart(pieCanvas, {
+          type: 'pie',
+          data: {
+            labels: ['0-25%', '25-50%', '50-75%', '75-100%'],
+            datasets: [{
+              data: ranges,
+              backgroundColor: ['#00d4ff', '#00b4d8', '#0094b6', '#007494']
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {title: {display: true, text: `${col} Distribution`, color: '#fff'}}
+          }
+        });
+      });
+    }
+
+    function toggleTheme() {
+      document.body.classList.toggle('light');
+      const toggleBtn = document.querySelector('.theme-toggle');
+      toggleBtn.textContent = document.body.classList.contains('light') ? '🌙' : '☀️';
+    }
+  </script>
+</body>
+
+</html>
